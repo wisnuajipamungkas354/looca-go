@@ -78,7 +78,11 @@ func (h *AnalyticsHandler) Analytics(c *gin.Context) {
 	// Map visit_date -> visitors count
 	visitMap := make(map[string]int)
 	for _, v := range visits {
-		visitMap[v.VisitDate] = v.Visitors
+		dateStr := v.VisitDate
+		if len(dateStr) >= 10 {
+			dateStr = dateStr[:10]
+		}
+		visitMap[dateStr] += v.Visitors
 	}
 
 	// 1. Daily: last 14 days (inclusive of today), oldest to newest

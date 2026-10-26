@@ -135,20 +135,29 @@ func (h *PublicHandler) PlayWorkshop(c *gin.Context) {
 
 func (h *PublicHandler) Visit(c *gin.Context) {
 	today := time.Now().Format("2006-01-02")
-	visit := models.DailyVisit{
-		VisitDate: today,
-		Visitors:  1,
-	}
 
-	err := h.DB.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "visit_date"}},
-		DoUpdates: clause.Assignments(map[string]interface{}{
-			"visitors": gorm.Expr("visitors + ?", 1),
-		}),
-	}).Create(&visit).Error
+	// Upsert daily visit: increment visitors count for today
+	err := h.DB.Exec(
+		"INSERT INTO `daily_visits` (`visit_date`, `visitors`) VALUES (?, 1) ON DUPLICATE KEY UPDATE `visitors` = `visitors` + 1",
+		today,
+	).Error
 
 	if err != nil {
-		utils.Error(c, http.StatusInternalServerError, "Failed to record visit")
+		// Fallback for different dialects or driver configurations
+		visit := models.DailyVisit{
+			VisitDate: today,
+			Visitors:  1,
+		}
+		err = h.DB.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "visit_date"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"visitors": gorm.Expr("visitors + ?", 1),
+			}),
+		}).Create(&visit).Error
+	}
+
+	if err != nil {
+		utils.Error(c, http.StatusInternalServerError, "Failed to record visit: "+err.Error())
 		return
 	}
 
