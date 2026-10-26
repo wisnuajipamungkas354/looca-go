@@ -172,12 +172,13 @@ func (h *PublicHandler) RedirectEvent(c *gin.Context) {
 	}
 
 	var event models.Event
-	// Match exact slug, or short_link ending with /slug, or short_link equal to slug
+	// Match exact slug, or short_link ending with /slug, or short_link containing slug, or ID
 	err := h.DB.Where(
-		"short_link = ? OR short_link LIKE ? OR short_link LIKE ?",
+		"short_link = ? OR short_link LIKE ? OR short_link LIKE ? OR id = ?",
 		slug,
 		"%/"+slug,
 		"%/"+slug+"%",
+		slug,
 	).First(&event).Error
 
 	if err != nil {
@@ -194,5 +195,10 @@ func (h *PublicHandler) RedirectEvent(c *gin.Context) {
 		return
 	}
 
-	c.Redirect(http.StatusFound, *event.OriginLink)
+	dest := strings.TrimSpace(*event.OriginLink)
+	if !strings.HasPrefix(dest, "http://") && !strings.HasPrefix(dest, "https://") {
+		dest = "https://" + dest
+	}
+
+	c.Redirect(http.StatusFound, dest)
 }
