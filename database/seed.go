@@ -34,7 +34,11 @@ func SeedEssential(db *gorm.DB, cfg *config.Config) {
 		}
 		log.Println("seed admin: inserted 1")
 	} else {
-		log.Println("seed admin: skipped (table not empty)")
+		hash, err := bcrypt.GenerateFromPassword([]byte(cfg.AdminPassword), bcrypt.DefaultCost)
+		if err == nil {
+			db.Model(&models.Admin{}).Where("email = ?", cfg.AdminEmail).Update("password_hash", string(hash))
+			log.Println("seed admin: updated password for", cfg.AdminEmail)
+		}
 	}
 
 	// 2. Categories

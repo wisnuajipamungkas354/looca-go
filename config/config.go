@@ -47,7 +47,7 @@ func Load() *Config {
 		DBName:        getEnv("DB_NAME", "looca"),
 		JWTSecret:     jwtSecret,
 		AdminEmail:    getEnv("ADMIN_EMAIL", "admin@looca.id"),
-		AdminPassword: getEnv("ADMIN_PASSWORD", "admin123"),
+		AdminPassword: getEnv("ADMIN_PASSWORD", "NisfitLooca123"),
 		AdminName:     getEnv("ADMIN_NAME", "Looca Admin"),
 		UploadDir:     getEnv("UPLOAD_DIR", "./uploads"),
 		SeedAssetsDir: getEnv("SEED_ASSETS_DIR", "./database/seed_assets"),
