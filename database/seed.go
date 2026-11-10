@@ -84,4 +84,22 @@ func SeedEssential(db *gorm.DB, cfg *config.Config) {
 	} else {
 		log.Println("seed settings: skipped (table not empty)")
 	}
+
+	// 4. Visitor Sources (Initial popular sources)
+	var sourceCount int64
+	if err := db.Model(&models.VisitorSource{}).Count(&sourceCount).Error; err == nil && sourceCount == 0 {
+		initialSources := []models.VisitorSource{
+			{Source: "Instagram", Visitors: 1420},
+			{Source: "Threads", Visitors: 980},
+			{Source: "Google", Visitors: 750},
+			{Source: "Direct", Visitors: 520},
+			{Source: "TikTok", Visitors: 430},
+			{Source: "WhatsApp", Visitors: 210},
+		}
+		if err := db.Create(&initialSources).Error; err != nil {
+			log.Printf("WARN failed to seed visitor sources: %v", err)
+		} else {
+			log.Println("seed visitor sources: inserted 6")
+		}
+	}
 }

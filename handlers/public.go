@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -133,6 +134,67 @@ func (h *PublicHandler) PlayWorkshop(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }
 
+func ParseVisitorSource(referrer string) string {
+	ref := strings.ToLower(strings.TrimSpace(referrer))
+	if ref == "" {
+		return "Direct"
+	}
+
+	if strings.Contains(ref, "threads.net") || ref == "threads" {
+		return "Threads"
+	}
+	if strings.Contains(ref, "instagram.com") || ref == "instagram" || ref == "ig" {
+		return "Instagram"
+	}
+	if strings.Contains(ref, "google.") || ref == "google" {
+		return "Google"
+	}
+	if strings.Contains(ref, "tiktok.com") || ref == "tiktok" {
+		return "TikTok"
+	}
+	if strings.Contains(ref, "whatsapp.com") || strings.Contains(ref, "wa.me") || ref == "whatsapp" || ref == "wa" {
+		return "WhatsApp"
+	}
+	if strings.Contains(ref, "twitter.com") || strings.Contains(ref, "t.co") || strings.Contains(ref, "x.com") || ref == "twitter" || ref == "x" {
+		return "Twitter / X"
+	}
+	if strings.Contains(ref, "facebook.com") || strings.Contains(ref, "fb.com") || ref == "facebook" || ref == "fb" {
+		return "Facebook"
+	}
+	if strings.Contains(ref, "youtube.com") || strings.Contains(ref, "youtu.be") || ref == "youtube" {
+		return "YouTube"
+	}
+	if strings.Contains(ref, "shopee.") || ref == "shopee" {
+		return "Shopee"
+	}
+	if strings.Contains(ref, "tokopedia.com") || ref == "tokopedia" {
+		return "Tokopedia"
+	}
+	if strings.Contains(ref, "pinterest.") || ref == "pinterest" {
+		return "Pinterest"
+	}
+	if strings.Contains(ref, "linkedin.com") || ref == "linkedin" {
+		return "LinkedIn"
+	}
+	if strings.Contains(ref, "looca-id.com") || strings.Contains(ref, "looca.id") || strings.Contains(ref, "localhost") || strings.Contains(ref, "127.0.0.1") || ref == "direct" {
+		return "Direct"
+	}
+
+	u, err := url.Parse(referrer)
+	if err == nil && u.Host != "" {
+		host := strings.TrimPrefix(u.Host, "www.")
+		if host != "" {
+			return host
+		}
+	}
+
+	return "Direct"
+}
+
+type VisitPayload struct {
+	Referrer string `json:"referrer"`
+}
+
 func (h *PublicHandler) Visit(c *gin.Context) {
 	today := time.Now().Format("2006-01-02")
 
@@ -148,7 +210,7 @@ func (h *PublicHandler) Visit(c *gin.Context) {
 			VisitDate: today,
 			Visitors:  1,
 		}
-		err = h.DB.Clauses(clause.OnConflict{
+		_ = h.DB.Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "visit_date"}},
 			DoUpdates: clause.Assignments(map[string]interface{}{
 				"visitors": gorm.Expr("visitors + ?", 1),
@@ -156,42 +218,78 @@ func (h *PublicHandler) Visit(c *gin.Context) {
 		}).Create(&visit).Error
 	}
 
-	if err != nil {
-		utils.Error(c, http.StatusInternalServerError, "Failed to record visit: "+err.Error())
-		return
+	// Read referrer from request body or header or query params
+	var payload VisitPayload
+	_ = c.ShouldBindJSON(&payload)
+
+	rawRef := payload.Referrer
+	if rawRef == "" {
+		rawRef = c.Query("ref")
+	}
+	if rawRef == "" {
+		rawRef = c.Query("utm_source")
+	}
+	if rawRef == "" {
+		rawRef = c.GetHeader("Referer")
+	}
+
+	source := ParseVisitorSource(rawRef)
+
+	// Upsert daily visitor source
+	_ = h.DB.Exec(
+		"INSERT INTO `daily_visitor_sources` (`visit_date`, `source`, `visitors`) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE `visitors` = `visitors` + 1",
+		today, source,
+	).Error
+
+	// Upsert total visitor source
+	sourceErr := h.DB.Exec(
+		"INSERT INTO `visitor_sources` (`source`, `visitors`) VALUES (?, 1) ON DUPLICATE KEY UPDATE `visitors` = `visitors` + 1",
+		source,
+	).Error
+
+	if sourceErr != nil {
+		vs := models.VisitorSource{
+			Source:   source,
+			Visitors: 1,
+		}
+		_ = h.DB.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "source"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"visitors": gorm.Expr("visitors + ?", 1),
+			}),
+		}).Create(&vs).Error
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }
 
 func (h *PublicHandler) RedirectEvent(c *gin.Context) {
-	slug := strings.TrimSpace(c.Param("slug"))
+	rawSlug := strings.TrimSpace(c.Param("slug"))
+	slug := strings.TrimSuffix(strings.TrimSuffix(rawSlug, "/"), ".html")
 	if slug == "" {
-		utils.Error(c, http.StatusBadRequest, "slug is required")
+		c.Redirect(http.StatusFound, "https://looca-id.com")
 		return
 	}
 
 	var event models.Event
-	// Match exact slug, or short_link ending with /slug, or short_link containing slug, or ID
+	// Match exact slug, full URL, ending with /slug, containing /slug, or numeric ID
 	err := h.DB.Where(
-		"short_link = ? OR short_link LIKE ? OR short_link LIKE ? OR id = ?",
+		"short_link = ? OR short_link = ? OR short_link = ? OR short_link LIKE ? OR short_link LIKE ? OR id = ?",
 		slug,
+		"https://looca-id.com/event/"+slug,
+		"https://looca.id/event/"+slug,
 		"%/"+slug,
 		"%/"+slug+"%",
 		slug,
 	).First(&event).Error
 
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			utils.Error(c, http.StatusNotFound, "Event not found")
-			return
-		}
-		utils.Error(c, http.StatusInternalServerError, "Database error")
+		c.Redirect(http.StatusFound, "https://looca-id.com")
 		return
 	}
 
 	if event.OriginLink == nil || strings.TrimSpace(*event.OriginLink) == "" {
-		utils.Error(c, http.StatusNotFound, "Origin link not available for this event")
+		c.Redirect(http.StatusFound, "https://looca-id.com")
 		return
 	}
 

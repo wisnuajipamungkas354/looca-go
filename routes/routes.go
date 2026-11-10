@@ -58,6 +58,7 @@ func Setup(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 			adm.GET("/me", authHandler.Me)
 			adm.GET("/stats", analyticsHandler.Stats)
 			adm.GET("/analytics", analyticsHandler.Analytics)
+			adm.GET("/visitor-sources", analyticsHandler.VisitorSources)
 			adm.GET("/settings", settingsHandler.Get)
 			adm.PUT("/settings", settingsHandler.Update)
 

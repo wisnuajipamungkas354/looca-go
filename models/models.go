@@ -142,3 +142,24 @@ type DailyVisit struct {
 func (DailyVisit) TableName() string {
 	return "daily_visits"
 }
+
+type VisitorSource struct {
+	ID        uint   `gorm:"primaryKey;autoIncrement" json:"id"`
+	Source    string `gorm:"size:100;uniqueIndex;not null" json:"source"`
+	Visitors  int    `gorm:"not null;default:0" json:"visitors"`
+}
+
+func (VisitorSource) TableName() string {
+	return "visitor_sources"
+}
+
+type DailyVisitorSource struct {
+	ID        uint   `gorm:"primaryKey;autoIncrement" json:"id"`
+	VisitDate string `gorm:"type:date;not null;uniqueIndex:idx_date_source" json:"visit_date"`
+	Source    string `gorm:"size:100;not null;uniqueIndex:idx_date_source" json:"source"`
+	Visitors  int    `gorm:"not null;default:0" json:"visitors"`
+}
+
+func (DailyVisitorSource) TableName() string {
+	return "daily_visitor_sources"
+}
